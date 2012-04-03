@@ -5,8 +5,8 @@
 #include <stdio.h>
 #include <gme/gme.h>
 
-/* Print a string surrounded by quotes while escaping any quotes encountered
- * within the string. */
+/* Print a string surrounded by quotes while escaping any quotes or
+ * backslashes encountered within the string. */
 void escape_print(const char *str)
 {
   int i = 0;
