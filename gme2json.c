@@ -1,3 +1,7 @@
+/*
+ * To compile:
+ *   gcc -Wall gme2json.c -o gme2json -lgme
+ */
 #include <stdio.h>
 #include <gme/gme.h>
 
@@ -10,7 +14,7 @@ void escape_print(const char *str)
   putchar('"');
   while (str[i])
   {
-    if (str[i] == '"')
+    if ((str[i] == '"') || (str[i] == '\\'))
       putchar('\\');
     putchar(str[i]);
     i++;
