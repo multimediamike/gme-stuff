@@ -13,33 +13,37 @@
 #define BIT_RESOLUTION 16
 #define CHANNELS 2
 #define BUFFER_SIZE 1024
-#define AUDIO_QUEUE_SIZE 20
+#define AUDIO_QUEUE_SIZE 5 
 /* this is because there are only 10 number keys */
 #define MAX_VOICES 10
 
 typedef struct
 {
-  int audio_consumed;
-  int video_consumed;
   int timestamp;  /* in milliseconds */
   short audio_buffer[BUFFER_SIZE];
 } audio_buffer;
 
-static int last_audio_buffer_consumed = -1;
 static int audio_queue_head = 0;
+static int audio_queue_count = 0;
+static SDL_mutex *audio_queue_mutex;
 static audio_buffer audio_queue[AUDIO_QUEUE_SIZE];
 
 void gme_feedaudio(void *unused, Uint8 *stream, int len)
 {
-  int i;
+  SDL_LockMutex(audio_queue_mutex);
 
-  last_audio_buffer_consumed++;
-  last_audio_buffer_consumed %= AUDIO_QUEUE_SIZE;
-  i = last_audio_buffer_consumed;
+  if (audio_queue_count == 0)
+  {
+    SDL_UnlockMutex(audio_queue_mutex);
+    return;
+  }
 
-  SDL_MixAudio(stream, (uint8_t *)(audio_queue[i].audio_buffer), 
+  SDL_MixAudio(stream, (uint8_t *)(audio_queue[audio_queue_head].audio_buffer), 
     len, SDL_MIX_MAXVOLUME);
-  audio_queue[i].audio_consumed = 1;
+  audio_queue_head = (audio_queue_head + 1) % AUDIO_QUEUE_SIZE;
+  audio_queue_count--;
+
+  SDL_UnlockMutex(audio_queue_mutex);
 }
 
 int main(int argc, char *argv[])
@@ -48,12 +52,14 @@ int main(int argc, char *argv[])
   SDL_AudioSpec fmt;
   SDL_AudioSpec actual_fmt;
   SDL_Event event;
+  int keyPressActive;
   Music_Emu *emu;
   gme_info_t *info;
   gme_err_t gmeErr;
   int track;
   int i, j;
   int voice_flags[MAX_VOICES];
+  int finished;
 
   if (argc < 2)
   {
@@ -89,8 +95,6 @@ int main(int argc, char *argv[])
   gme_start_track(emu, track);
   for (i = 0; i < AUDIO_QUEUE_SIZE; i++)
   {
-    audio_queue[i].audio_consumed = 0;
-    audio_queue[i].video_consumed = 0;
     audio_queue[i].timestamp = gme_tell(emu);
     gmeErr = gme_play(emu, BUFFER_SIZE, audio_queue[i].audio_buffer);
     if (gmeErr)
@@ -99,6 +103,7 @@ int main(int argc, char *argv[])
       break;
     }
   }
+  audio_queue_count = AUDIO_QUEUE_SIZE;  /* starts out full */
 
   /* initialize SDL audio and start playing */
   if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO) < 0)
@@ -120,6 +125,7 @@ int main(int argc, char *argv[])
     printf("could not open SDL audio: %s\n", SDL_GetError());
     exit(1);
   }
+  audio_queue_mutex = SDL_CreateMutex();
 
   /* create video window */
   screen = SDL_SetVideoMode(512, 256, 32, SDL_SWSURFACE);
@@ -137,19 +143,27 @@ int main(int argc, char *argv[])
   memset(voice_flags, 0, MAX_VOICES * sizeof(int));
 
   SDL_PauseAudio(0);
-  while (1)
+  finished = 0;
+  keyPressActive = 0;
+  while (!finished)
   {
-    SDL_Delay(20);
+    SDL_Delay(1);
 
     SDL_PollEvent(&event);
-    if (event.type == SDL_KEYDOWN &&
-        event.key.keysym.sym == SDLK_ESCAPE)
-      break;
+    if (keyPressActive && event.type == SDL_KEYUP)
+      keyPressActive = 0;
 
-    if (event.type == SDL_KEYDOWN)
+    if (!keyPressActive && event.type == SDL_KEYDOWN)
     {
+      keyPressActive = 1;
+
       switch (event.key.keysym.sym)
       {
+        case SDLK_ESCAPE:
+        case SDLK_q:
+          finished = 1;
+          break;
+
         case SDLK_0:
         case SDLK_1:
         case SDLK_2:
@@ -161,7 +175,6 @@ int main(int argc, char *argv[])
         case SDLK_8:
         case SDLK_9:
           i = event.key.keysym.sym - SDLK_0;
-printf("toggling voice %d\n", i);
           voice_flags[i] ^= 1;
           gme_mute_voice(emu, i, voice_flags[i]);
           break;
@@ -176,25 +189,21 @@ printf("toggling voice %d\n", i);
     }
 
     /* check if it's time to generate more audio */
-    for (i = 0; i < AUDIO_QUEUE_SIZE; i++)
+    SDL_LockMutex(audio_queue_mutex);
+    for (i = 0; i < AUDIO_QUEUE_SIZE - audio_queue_count; i++)
     {
-      j = (audio_queue_head + i) % AUDIO_QUEUE_SIZE;
-      if (audio_queue[j].audio_consumed 
-         /* && audio_queue[j].video_consumed */ )
+      j = (audio_queue_head + audio_queue_count + i) % AUDIO_QUEUE_SIZE;
+      audio_queue[j].timestamp = gme_tell(emu);
+      gmeErr = gme_play(emu, BUFFER_SIZE, audio_queue[j].audio_buffer);
+      if (gmeErr)
       {
-        audio_queue[j].audio_consumed = 0;
-        audio_queue[j].video_consumed = 0;
-        audio_queue[j].timestamp = gme_tell(emu);
-        gmeErr = gme_play(emu, BUFFER_SIZE, audio_queue[j].audio_buffer);
-        if (gmeErr)
-        {
-          printf("%s\n", gmeErr);
-          break;
-        }
+        printf("%s\n", gmeErr);
+        break;
       }
     }
+    audio_queue_count = AUDIO_QUEUE_SIZE; /* maxed out again */
+    SDL_UnlockMutex(audio_queue_mutex);
   }
-printf("done...\n");
 
   SDL_CloseAudio();
 
