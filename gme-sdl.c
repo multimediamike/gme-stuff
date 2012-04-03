@@ -175,8 +175,11 @@ int main(int argc, char *argv[])
         case SDLK_8:
         case SDLK_9:
           i = event.key.keysym.sym - SDLK_0;
-          voice_flags[i] ^= 1;
-          gme_mute_voice(emu, i, voice_flags[i]);
+          if (i < gme_voice_count(emu))
+          {
+            voice_flags[i] ^= 1;
+            gme_mute_voice(emu, i, voice_flags[i]);
+          }
           break;
 
         case SDLK_LEFT:
