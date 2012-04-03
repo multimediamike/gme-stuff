@@ -184,6 +184,17 @@ int main(int argc, char *argv[])
 
         case SDLK_LEFT:
         case SDLK_RIGHT:
+          if (event.key.keysym.sym == SDLK_LEFT)
+            i = -1;
+          else
+            i = 1;
+          track += i;
+          if (track >= gme_track_count(emu))
+            track = 0;
+          if (track < 0)
+            track = gme_track_count(emu) - 1;
+          gme_start_track(emu, track);
+          printf("Playing track %d\n", track);
           break;
 
         default:
