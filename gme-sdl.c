@@ -70,6 +70,8 @@ int main(int argc, char *argv[])
   int frame_counter;
   unsigned int pixel;
   Uint32 base_clock;
+  Uint32 current_tick;
+  int audio_started;
 
   if (argc < 2)
   {
@@ -100,6 +102,7 @@ int main(int argc, char *argv[])
     gme_delete(emu);
     return 2;
   }
+  gme_start_track(emu, track);
 
   /* initialize SDL audio and start playing */
   if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO) < 0)
@@ -139,35 +142,49 @@ int main(int argc, char *argv[])
     printf("voice %d: %s\n", i, gme_voice_name(emu, i));
   memset(voice_flags, 0, MAX_VOICES * sizeof(int));
 
-  /* initialize the audio queue */
-  base_clock = SDL_GetTicks();
-  gme_start_track(emu, track);
-  for (i = 0; i < AUDIO_QUEUE_SIZE; i++)
-  {
-    audio_queue[i].timestamp = base_clock + gme_tell(emu);
-    gmeErr = gme_play(emu, BUFFER_SIZE, audio_queue[i].audio_buffer);
-    if (gmeErr)
-    {
-      printf("%s\n", gmeErr);
-      break;
-    }
-  }
-  audio_queue_count = AUDIO_QUEUE_SIZE;  /* starts out full */
-
   /* initialize the visualization matters */
   frame_counter = 0;
-  next_ms_to_update = base_clock + frame_counter * 1000 / FRAME_RATE;
-  need_more_viz_data = 0;
+  next_ms_to_update = frame_counter * 1000 / FRAME_RATE;
+  need_more_viz_data = 1;
   pixel = 0x0000FF;
-  memcpy(viz_buffer, audio_queue[0].audio_buffer, BUFFER_SIZE * sizeof(short));
 
-  SDL_PauseAudio(0);
   finished = 0;
   keyPressActive = 0;
+  audio_started = 0;
   while (!finished)
   {
+    /* check if it's time to generate more audio */
+    SDL_LockMutex(audio_queue_mutex);
+    for (i = 0; i < AUDIO_QUEUE_SIZE - audio_queue_count; i++)
+    {
+      j = (audio_queue_head + audio_queue_count + i) % AUDIO_QUEUE_SIZE;
+      audio_queue[j].timestamp = gme_tell(emu);
+      gmeErr = gme_play(emu, BUFFER_SIZE, audio_queue[j].audio_buffer);
+      if (gmeErr)
+      {
+        printf("%s\n", gmeErr);
+        break;
+      }
+      if (need_more_viz_data && audio_queue[j].timestamp >= next_ms_to_update)
+      {
+        memcpy(viz_buffer, audio_queue[j].audio_buffer,
+          BUFFER_SIZE * sizeof(short));
+        need_more_viz_data = 0;
+      }
+    }
+    audio_queue_count = AUDIO_QUEUE_SIZE; /* maxed out again */
+    SDL_UnlockMutex(audio_queue_mutex);
+
+    if (!audio_started)
+    {
+      audio_started = 1;
+      base_clock = SDL_GetTicks();
+      SDL_PauseAudio(0);
+    }
+
     /* see if it's time to update the visualization */
-    if (SDL_GetTicks() >= next_ms_to_update)
+    current_tick = SDL_GetTicks() - base_clock;
+    if (current_tick >= next_ms_to_update)
     {
       if (SDL_MUSTLOCK(screen))
         SDL_LockSurface(screen);
@@ -188,11 +205,9 @@ int main(int argc, char *argv[])
       SDL_UpdateRect(screen, 0, 0, 0, 0);
 
       frame_counter++;
-      next_ms_to_update = base_clock + frame_counter * 1000 / FRAME_RATE;
+      next_ms_to_update = frame_counter * 1000 / FRAME_RATE - 5;
       need_more_viz_data = 1;
     }
-
-    SDL_Delay(1);
 
     SDL_PollEvent(&event);
     if (keyPressActive && event.type == SDL_KEYUP)
@@ -247,27 +262,7 @@ int main(int argc, char *argv[])
       }
     }
 
-    /* check if it's time to generate more audio */
-    SDL_LockMutex(audio_queue_mutex);
-    for (i = 0; i < AUDIO_QUEUE_SIZE - audio_queue_count; i++)
-    {
-      j = (audio_queue_head + audio_queue_count + i) % AUDIO_QUEUE_SIZE;
-      audio_queue[j].timestamp = base_clock + gme_tell(emu);
-      gmeErr = gme_play(emu, BUFFER_SIZE, audio_queue[j].audio_buffer);
-      if (gmeErr)
-      {
-        printf("%s\n", gmeErr);
-        break;
-      }
-      if (need_more_viz_data && audio_queue[j].timestamp >= next_ms_to_update)
-      {
-        memcpy(viz_buffer, audio_queue[j].audio_buffer,
-          BUFFER_SIZE * sizeof(short));
-        need_more_viz_data = 0;
-      }
-    }
-    audio_queue_count = AUDIO_QUEUE_SIZE; /* maxed out again */
-    SDL_UnlockMutex(audio_queue_mutex);
+    SDL_Delay(1);
   }
 
   SDL_CloseAudio();
