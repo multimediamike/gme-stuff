@@ -16,6 +16,9 @@
 #define AUDIO_QUEUE_SIZE 5 
 /* this is because there are only 10 number keys */
 #define MAX_VOICES 10
+#define FRAME_RATE 30
+#define WIDTH (BUFFER_SIZE / 2)
+#define HEIGHT 256
 
 typedef struct
 {
@@ -52,6 +55,7 @@ int main(int argc, char *argv[])
   SDL_AudioSpec fmt;
   SDL_AudioSpec actual_fmt;
   SDL_Event event;
+  unsigned int *pixels;
   int keyPressActive;
   Music_Emu *emu;
   gme_info_t *info;
@@ -60,6 +64,12 @@ int main(int argc, char *argv[])
   int i, j;
   int voice_flags[MAX_VOICES];
   int finished;
+  short viz_buffer[BUFFER_SIZE];
+  int next_ms_to_update;
+  int need_more_viz_data;
+  int frame_counter;
+  unsigned int pixel;
+  Uint32 base_clock;
 
   if (argc < 2)
   {
@@ -91,20 +101,6 @@ int main(int argc, char *argv[])
     return 2;
   }
 
-  /* initialize the audio queue before launching the audio thread */
-  gme_start_track(emu, track);
-  for (i = 0; i < AUDIO_QUEUE_SIZE; i++)
-  {
-    audio_queue[i].timestamp = gme_tell(emu);
-    gmeErr = gme_play(emu, BUFFER_SIZE, audio_queue[i].audio_buffer);
-    if (gmeErr)
-    {
-      printf("%s\n", gmeErr);
-      break;
-    }
-  }
-  audio_queue_count = AUDIO_QUEUE_SIZE;  /* starts out full */
-
   /* initialize SDL audio and start playing */
   if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO) < 0)
   {
@@ -128,13 +124,14 @@ int main(int argc, char *argv[])
   audio_queue_mutex = SDL_CreateMutex();
 
   /* create video window */
-  screen = SDL_SetVideoMode(512, 256, 32, SDL_SWSURFACE);
+  screen = SDL_SetVideoMode(WIDTH, HEIGHT, 32, SDL_SWSURFACE);
   if (screen == NULL)
   {
     printf("could not set video mode: %s\n", SDL_GetError());
     exit(1);
   }
   SDL_WM_SetCaption("SDL Game Music Emu", NULL);
+  pixels = (unsigned int *)screen->pixels;
 
   printf("system: %s\ngame: %s\nsong: %s\nlength: %d ms\nplay length: %d ms\nplaying track %d...\nCtrl-C to exit\n",
     info->system, info->game, info->song, info->length, info->play_length, track);
@@ -142,11 +139,59 @@ int main(int argc, char *argv[])
     printf("voice %d: %s\n", i, gme_voice_name(emu, i));
   memset(voice_flags, 0, MAX_VOICES * sizeof(int));
 
+  /* initialize the audio queue */
+  base_clock = SDL_GetTicks();
+  gme_start_track(emu, track);
+  for (i = 0; i < AUDIO_QUEUE_SIZE; i++)
+  {
+    audio_queue[i].timestamp = base_clock + gme_tell(emu);
+    gmeErr = gme_play(emu, BUFFER_SIZE, audio_queue[i].audio_buffer);
+    if (gmeErr)
+    {
+      printf("%s\n", gmeErr);
+      break;
+    }
+  }
+  audio_queue_count = AUDIO_QUEUE_SIZE;  /* starts out full */
+
+  /* initialize the visualization matters */
+  frame_counter = 0;
+  next_ms_to_update = base_clock + frame_counter * 1000 / FRAME_RATE;
+  need_more_viz_data = 0;
+  pixel = 0x0000FF;
+  memcpy(viz_buffer, audio_queue[0].audio_buffer, BUFFER_SIZE * sizeof(short));
+
   SDL_PauseAudio(0);
   finished = 0;
   keyPressActive = 0;
   while (!finished)
   {
+    /* see if it's time to update the visualization */
+    if (SDL_GetTicks() >= next_ms_to_update)
+    {
+      if (SDL_MUSTLOCK(screen))
+        SDL_LockSurface(screen);
+
+      memset(pixels, 0, WIDTH * HEIGHT * sizeof(unsigned int));
+      for (i = 0; i < BUFFER_SIZE; i++)
+      {
+        if (i & 1)  /* right channel data */
+          pixels[WIDTH * ((192 - (viz_buffer[i] / 512)) - 1) + (i >> 1)] = pixel;
+        else        /* left channel data */
+          pixels[WIDTH * (64 - (viz_buffer[i] / 512)) + (i >> 1)] = pixel;
+      }
+      for (i = 0; i < WIDTH; i++)
+        pixels[128 * WIDTH + i] = 0xFFFFFF;
+
+      if (SDL_MUSTLOCK(screen))
+        SDL_UnlockSurface(screen);
+      SDL_UpdateRect(screen, 0, 0, 0, 0);
+
+      frame_counter++;
+      next_ms_to_update = base_clock + frame_counter * 1000 / FRAME_RATE;
+      need_more_viz_data = 1;
+    }
+
     SDL_Delay(1);
 
     SDL_PollEvent(&event);
@@ -207,12 +252,18 @@ int main(int argc, char *argv[])
     for (i = 0; i < AUDIO_QUEUE_SIZE - audio_queue_count; i++)
     {
       j = (audio_queue_head + audio_queue_count + i) % AUDIO_QUEUE_SIZE;
-      audio_queue[j].timestamp = gme_tell(emu);
+      audio_queue[j].timestamp = base_clock + gme_tell(emu);
       gmeErr = gme_play(emu, BUFFER_SIZE, audio_queue[j].audio_buffer);
       if (gmeErr)
       {
         printf("%s\n", gmeErr);
         break;
+      }
+      if (need_more_viz_data && audio_queue[j].timestamp >= next_ms_to_update)
+      {
+        memcpy(viz_buffer, audio_queue[j].audio_buffer,
+          BUFFER_SIZE * sizeof(short));
+        need_more_viz_data = 0;
       }
     }
     audio_queue_count = AUDIO_QUEUE_SIZE; /* maxed out again */
