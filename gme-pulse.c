@@ -6,7 +6,12 @@
 #include <stdlib.h>
 
 #include <gme/gme.h>
+
+#ifdef __linux__
 #include <pulse/simple.h>
+#else
+#error This program is designed for Linux (uses Linux-only APIs)
+#endif
 
 #define SAMPLE_RATE 44100
 #define BIT_RESOLUTION 16
