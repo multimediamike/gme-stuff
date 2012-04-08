@@ -1,6 +1,6 @@
 /*
  * Compile using:
- *   gcc -g -Wall gme-sdl.c -o gme-sdl `pkg-config --cflags --libs sdl` -lgme
+ *   gcc -g -Wall gme-sdl.c -o gme-sdl `sdl-config --cflags --libs` -lgme
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -228,7 +228,7 @@ int main(int argc, char *argv[])
           pixels[WIDTH * (64 - (viz_buffer[i] / 512)) + (i >> 1)] = pixel;
       }
       for (i = 0; i < WIDTH; i++)
-        pixels[128 * WIDTH + i] = 0xFFFFFF;
+        pixels[128 * WIDTH + i] = 0xFFFFFFFF;
 
       if (SDL_MUSTLOCK(screen))
         SDL_UnlockSurface(screen);
