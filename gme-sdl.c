@@ -26,9 +26,10 @@ static short audio_buffer[BUFFER_SIZE];
 static unsigned int audio_start = 0;
 static unsigned int audio_end = 0;
 
-void gme_feedaudio(void *unused, Uint8 *stream, int requested_len)
+void gme_feedaudio(void *unused, Uint8 *stream, int req_len_in_bytes)
 {
   unsigned int actual_len;
+  int buffer_start_in_bytes, buffer_end_in_bytes;
 
   SDL_LockMutex(audio_mutex);
 
@@ -39,13 +40,19 @@ void gme_feedaudio(void *unused, Uint8 *stream, int requested_len)
     return;
   }
 
+  buffer_start_in_bytes = (audio_start % BUFFER_SIZE) * 2;
+  buffer_end_in_bytes = (audio_end % BUFFER_SIZE ) * 2;
+
   /* decide how much to feed */
-  actual_len = audio_end - audio_start;
-  if (actual_len > requested_len)
-    actual_len = requested_len;
+  if (buffer_start_in_bytes > buffer_end_in_bytes)
+    actual_len = BUFFER_SIZE * 2 - buffer_start_in_bytes;
+  else
+    actual_len = buffer_end_in_bytes - buffer_start_in_bytes;
+  if (actual_len > req_len_in_bytes)
+    actual_len = req_len_in_bytes;
 
   /* feed it */
-  SDL_MixAudio(stream, (uint8_t *)(&audio_buffer[audio_start % BUFFER_SIZE]), 
+  SDL_MixAudio(stream, (uint8_t *)(&audio_buffer[buffer_start_in_bytes / 2]), 
     actual_len, SDL_MIX_MAXVOLUME);
   audio_start += actual_len / 2;
 
