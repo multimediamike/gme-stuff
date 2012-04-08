@@ -25,11 +25,19 @@ static SDL_mutex *audio_mutex;
 static short audio_buffer[BUFFER_SIZE];
 static unsigned int audio_start = 0;
 static unsigned int audio_end = 0;
+static int start_video = 0;
+Uint32 base_clock;
 
 void gme_feedaudio(void *unused, Uint8 *stream, int req_len_in_bytes)
 {
   unsigned int actual_len;
   int buffer_start_in_bytes, buffer_end_in_bytes;
+
+  if (!start_video)
+  {
+    start_video = 1;
+    base_clock = SDL_GetTicks();
+  }
 
   SDL_LockMutex(audio_mutex);
 
@@ -77,7 +85,6 @@ int main(int argc, char *argv[])
   int ms_to_update_video;
   int frame_counter;
   unsigned int pixel;
-  Uint32 base_clock;
   Uint32 current_tick;
   int audio_started;
   short *viz_buffer;
@@ -156,7 +163,6 @@ int main(int argc, char *argv[])
   finished = 0;
   keyPressActive = 0;
   audio_started = 0;
-  base_clock = SDL_GetTicks();
   while (!finished)
   {
     if (print_metadata)
@@ -201,7 +207,7 @@ int main(int argc, char *argv[])
 
     /* see if it's time to update the visualization */
     current_tick = SDL_GetTicks() - base_clock;
-    if (current_tick >= ms_to_update_video)
+    if (start_video && current_tick >= ms_to_update_video)
     {
       /* decide on a pixel color */
       pixel = (r_color << 16) | (g_color << 8) | (b_color << 0);
