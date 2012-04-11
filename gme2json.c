@@ -3,6 +3,7 @@
  *   gcc -Wall gme2json.c -o gme2json -lgme
  */
 #include <stdio.h>
+#include <string.h>
 #include <gme/gme.h>
 
 /* Print a string surrounded by quotes while escaping any quotes or
@@ -10,6 +11,12 @@
 void escape_print(const char *str)
 {
   int i = 0;
+
+  if (!strlen(str))
+  {
+    printf("null");
+    return;
+  }
 
   putchar('"');
   while (str[i])
@@ -30,7 +37,12 @@ void print_meta_strings(gme_info_t *info, const char *indent)
   printf("%s\"author\": ",    indent);  escape_print(info->author);     printf(",\n");
   printf("%s\"copyright\": ", indent);  escape_print(info->copyright);  printf(",\n");
   printf("%s\"comment\": ",   indent);  escape_print(info->comment);    printf(",\n");
-  printf("%s\"dumper\": ",    indent);  escape_print(info->dumper);     printf("\n");
+  printf("%s\"dumper\": ",    indent);  escape_print(info->dumper);     printf(",\n");
+
+  printf("%s\"length\": %d,\n",       indent, info->length);
+  printf("%s\"intro_length\": %d,\n", indent, info->intro_length);
+  printf("%s\"loop_length\": %d,\n",  indent, info->loop_length);
+  printf("%s\"play_length\": %d\n",   indent, info->play_length);
 }
 
 int main(int argc, char *argv[])
@@ -75,15 +87,7 @@ int main(int argc, char *argv[])
     printf("\n");
     gme_free_info(info);
   }
-  printf("  ],\n");
-  err = gme_track_info(emu, &info, 0);
-  if (err)
-  {
-    printf("ERROR\n");
-    return 2;
-  }
-  print_meta_strings(info, "  ");
-  gme_free_info(info);
+  printf("  ]\n");
   printf("}\n");
 
   gme_delete(emu);
