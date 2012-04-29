@@ -64,6 +64,18 @@ void gme_feedaudio(void *unused, Uint8 *stream, int req_len_in_bytes)
     actual_len, SDL_MIX_MAXVOLUME);
   audio_start += actual_len / 2;
 
+  /* wrap-around case */
+  if (actual_len < req_len_in_bytes)
+  {
+    stream += actual_len;
+    actual_len = req_len_in_bytes - actual_len;
+    buffer_start_in_bytes = (audio_start % BUFFER_SIZE) * 2;
+    /* feed it */
+    SDL_MixAudio(stream, (uint8_t *)(&audio_buffer[buffer_start_in_bytes / 2]), 
+      actual_len, SDL_MIX_MAXVOLUME);
+    audio_start += actual_len / 2;
+  }
+
   SDL_UnlockMutex(audio_mutex);
 }
 
