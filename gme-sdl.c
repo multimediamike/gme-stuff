@@ -1,4 +1,7 @@
 /*
+ * Game Music Emu output via SDL (with visualization)
+ *   by Mike Melanson (mike -at- multimedia.cx)
+ *
  * Compile using:
  *   gcc -g -Wall gme-sdl.c -o gme-sdl `sdl-config --cflags --libs` -lgme
  */

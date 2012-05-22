@@ -1,4 +1,7 @@
 /*
+ * Game Music Emu output via PulseAudio
+ *   by Mike Melanson (mike -at- multimedia.cx)
+ *
  * Compile using:
  *   gcc -Wall gme-pulse.c -o gme-pulse -lgme -lpulse-simple
  */

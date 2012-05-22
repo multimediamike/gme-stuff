@@ -1,4 +1,7 @@
 /*
+ * Use Game Music Emu library to output file metadata via JSON
+ *   by Mike Melanson (mike -at- multimedia.cx)
+ *
  * To compile:
  *   gcc -Wall gme2json.c -o gme2json -lgme
  */

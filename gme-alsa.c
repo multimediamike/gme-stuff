@@ -1,4 +1,7 @@
 /*
+ * Game Music Emu output via ALSA
+ *   by Mike Melanson (mike -at- multimedia.cx)
+ *
  * ALSA code mostly cribbed from:
  *   http://equalarea.com/paul/alsa-audio.html
  * 
