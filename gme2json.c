@@ -19,6 +19,7 @@
 void escape_print(const char *str)
 {
   int i = 0;
+  unsigned char c;
 
   if (!strlen(str))
   {
@@ -29,10 +30,25 @@ void escape_print(const char *str)
   putchar('"');
   while (str[i])
   {
-    if ((str[i] == '"') || (str[i] == '\\'))
+    c = (unsigned char)(str[i++]);
+    if (c > 127)
+    {
+      /* assume high-bit set == Latin-1 */
+      printf("\\u00%02X", c);
+    }
+    else if (c < 32)
+    {
+      /* convert control characters to spaces */
+      putchar(' ');
+    }
+    else if ((c == '"') || (c == '\\'))
+    {
+      /* escape quote and backslash characters */
       putchar('\\');
-    putchar(str[i]);
-    i++;
+      putchar(c);
+    }
+    else
+      putchar(c);
   }
   putchar('"');
 }
